@@ -4,7 +4,7 @@ from scipy import stats as st
 from matplotlib import pyplot as pl
 
 def main():
-    #makeOneGaussian(5, 2)
+    makeOneGaussian(5, 2)
     sim1DData()
     
 def gaussianpdf(x, xo, s):

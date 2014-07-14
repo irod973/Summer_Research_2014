@@ -4,24 +4,19 @@ import matplotlib.pyplot as pl
 from mpl_toolkits.mplot3d.axes3d import Axes3D
 
 #Irving Rodriguez
-#06/25/2014
-#Version 3
-#2D Gauss Plotter
-#This function plots a 2-Dimensional Gaussian using the pdf function from scipy and its projection based on 5 parameters:
-#Centroid coordiantes (2 parameters)
-#Angle between semi-major axis of ellipse and x-axis (1 parameter)
-#Semi-major and semi-minor axes of 1-Sigma contour (2 parameters)
+#07/10/2014
+#2D Gauss Analytic Work. Plots of sums using a-b parametrization, as well as fit to sum.
 
 
 def main():       
     X_MEAN = 3
     Y_MEAN = 4 #Centroid coordinates
     ALPHA = np.pi/5 #Angle between semi-major axis of ellipse and x-axis
-    MAJOR = 2
-    MINOR = 1 #Semi-major and semi-minor axes of 1-Sigma contour
+    MAJOR = 4
+    MINOR = 3 #Semi-major and semi-minor axes of 1-Sigma contour
     
     X_MEAN_2 = 5
-    Y_MEAN_2 = 0 #Centorid coordinates
+    Y_MEAN_2 = 0 #Centroid coordinates
     ALPHA_2 = np.pi/5 #Angle between semi-major axis of ellipse and x-axis
     MAJOR_2 = 5
     MINOR_2 = 2 #Semi-major and semi-minor axes of 1-Sigma contour
@@ -30,7 +25,7 @@ def main():
     X_MAX = 10
     Y_MIN = X_MIN
     Y_MAX = X_MAX
-    dx = .1
+    dx = .05
     dy = dx
     
     u = [X_MEAN, Y_MEAN]
@@ -41,17 +36,21 @@ def main():
     x, y = np.mgrid[X_MIN:X_MAX:dx, Y_MIN:Y_MAX:dy] #Coordinate syste
     
     gauss1 = make2DGaussian(x, y, u, o)
-    gaussianAxes(x,y, gauss1)
-    #gauss2 = make2DGaussian(x, y, u2, o2)
+    plotGaussian((x,y), gauss1)
+    gauss2 = make2DGaussian(x, y, u2, o2)
     #
-    #gauss3 = gauss1 + gauss2
+    gauss3 = gauss1 + gauss2
+    params = [X_MEAN, Y_MEAN, MAJOR, MINOR, ALPHA]
+    params2 = [X_MEAN_2, Y_MEAN_2, MAJOR_2, MINOR_2, ALPHA_2]
+    titleStr = 'Sum of 2D Analytic Gaussians\nParams (centroid coords, semi-major, semi-minor, alpha)\nFirst Gauss: ' + ', '.join([str(round(param,2)) for param in params]) + '\nSecond Gauss: ' + ', '.join([str(round(param,2)) for param in params2])
+    plotGaussian((x,y), gauss3, titleStr)
     #
     #fig, ax = gaussianAxes(x, y, gauss3)
     #fig.suptitle('Sum of Two Gaussians')
     #paramStr = '''Parameters (in format muX, muY, oXX, oXY, oYY) : First Gaussian: ''' + str(np.around(u, 2)).strip('[]') + ', ' + str(round(o[0][0], 2)) + ', ' + str(round(o[0][1], 2)) + ', ' + str(round(o[1][1], 2))
     #fig.text(.03,.03,paramStr)
     #print o
-    pl.show()
+    #pl.show()
     
 #Computes the matrix of second moments using the geometry of the elliptical contour at an angle alpha to the x-axis in real space.
 #Input: None
@@ -78,20 +77,19 @@ def make2DGaussian(x, y, u, o):
 #Plots a given 2D Gaussian and its contours for a given coordinate system.
 #Input: x and y axes values, 2D Gaussian distribution values
 #Output: 3D Surface Plot and 2D Contour plot
-def gaussianAxes(x, y, gauss):
-    fig, ax = pl.subplots(1, 2, figsize=(12,6))
+def plotGaussian((x, y), gauss, titleStr=''):
+    fig, ax = pl.subplots(1, 2)
+    fig.suptitle(titleStr)
     
     ax[0] = fig.add_subplot(121, projection='3d')
     ax[0].plot_surface(x, y, gauss)
-    ax[0].axis('tight')
-    ax[0].set_title('Surface Plot')
+    #ax[0].axis('tight')
     
-    ax[1].contourf(x, y, gauss)
-    ax[1].set_xlim([-10,10])
-    ax[1].set_ylim([-10,10])    
-    ax[1].set_title('Contours')
+    cax = ax[1].contourf(x, y, gauss)
+    #ax[0].axis('tight')
     
-    return fig, ax
+    pl.colorbar(cax)
+    pl.show()
     
 if __name__ == "__main__":
     main()
