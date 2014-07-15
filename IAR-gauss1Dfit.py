@@ -31,8 +31,8 @@ def analyticSumFit(mean, sig, nmean, nsigma):
     
     params = [mean, sig, nmean, nsigma]
     paramStr = "Params (mean1, sig1, mean2, sig2): " + ', '.join([str(param) for param in params])
-    titleStr = 'Sum of two 1-D Gaussians\n' + paramStr
-    
+    statStr = 'Stats of Sum (mean, sigma): ' + ', '.join([str(round(stat, 2)) for stat in mu])
+    titleStr = 'Sum of two 1-D Gaussians\n' + paramStr + '\n' + statStr
     fig = pl.figure()
     fig.suptitle(titleStr)
     pl.plot(x, y, color='b', label = 'Original')
@@ -57,8 +57,10 @@ def binSumFit(u, s, nu, ns):
     gaussData = gaussianpdf(x, mu2, sigma2)
     
     params = [u, s, nu, ns]
+    stats = [mu, sigma]
     paramStr = "Params (mean1, sig1, mean2, sig2): " + ', '.join([str(param) for param in params])
-    titleStr = 'Sum of two 1-D Gaussian Samples\n' + paramStr
+    statStr = 'Stats of Sum (mean, sigma): ' + ', '.join([str(np.round(stat, 2)) for stat in stats])
+    titleStr = 'Sum of two 1-D Gaussian Samples\n' + paramStr + '\n' + statStr
     
     fig = pl.figure()
     fig.suptitle(titleStr)
