@@ -17,11 +17,11 @@ def main():
     #When moving through parameter space
     diff = abs(MEAN-NOISE_MEAN)
     nmean = np.linspace(MEAN-abs(diff),MEAN+abs(diff), 21)
-    p = np.linspace(.5, .9, 21)
+    p = np.linspace(.5, .99, 50)
 
     fig = pl.figure()
     sumStats, err, binCent, hist = fitSum(MEAN, SIGMA, NOISE_MEAN, NOISE_SIGMA, PA, fig, plot=1)
-    chi2=chiSq(binCent, hist, sumStats[2], fig)
+    chi2=chiSq(binCent, hist, sumStats, fig)
     
     var, anVar = varFit(MEAN, SIGMA, nmean, NOISE_SIGMA, PA, fig)
     du, mu = meanFit(MEAN, SIGMA, nmean, NOISE_SIGMA, PA, fig)
@@ -34,22 +34,22 @@ def main():
     #Min = chi2[index1][index2]
     #print mini;print Min
     
-def chiSq(data, values, amp, fig):
+def chiSq(data, values, stats, fig):
     #Make nxn grid
-    n = 40
+    n = 50
     chiGrid = np.zeros([n,n])
       
-    meanMin = -7
-    meanMax = 7
-    sigMin = 0.1
-    sigMax = 14
+    meanMin = stats[0]-stats[0]/5
+    meanMax = stats[0]+stats[0]/5
+    sigMin = stats[1]-stats[1]/5
+    sigMax = stats[1]+stats[1]/5
     for i in range(n):
         for j in range(n):
             mean = meanMin + (meanMax-meanMin)*float(i)/(n-1)
             sig = sigMin + (sigMax-sigMin)*float(j)/(n-1)
             chi = 0.0
             for l in range(len(data)):
-                resid = (values[l] - gaussianpdf(data[l], mean, sig, amp))/np.sqrt(100000)/np.sqrt(values[l])#Leave in sqrt's for ChiSq, else leastSq fit
+                resid = (values[l] - gaussianpdf(data[l], mean, sig, stats[2]))#/np.sqrt(values[l])#Leave in sqrt's for ChiSq, else leastSq fit
                 chi = chi + resid**2
             chiGrid[n-1-j,i] = chi
             
@@ -150,7 +150,7 @@ def gaussianpdf(x, u, s, amp=1):
     return amp*np.exp(-(x-u)**2/(2*s**2))#/(np.sqrt(2*np.pi))
     
 def fitSum(u, s, nu, ns, pa, fig, plot=0):
-    samples = 1000000
+    samples = 100000
     bins = 200
     pb = 1 - pa
     dataSamples = pa*samples
@@ -178,7 +178,7 @@ def fitSum(u, s, nu, ns, pa, fig, plot=0):
 
     #Extract the paramaters of the sum fit
     p=[pa*u+pb*nu, np.sqrt(analyticMixVar(s, ns, [u-nu], pa)[0]), max(sumHist)]
-    sumStats, sumErr = opt.curve_fit(gaussianpdf, sumEdgCent, sumHist, p0=p, sigma = np.sqrt(sumHist), absolute_sigma=True)#Remove sigma and absolute sigma if not a ChiSq test
+    sumStats, sumErr = opt.curve_fit(gaussianpdf, sumEdgCent, sumHist, p0=p)#, sigma = np.sqrt(sumHist), absolute_sigma=True)#Remove sigma and absolute sigma if not a ChiSq test
     perr = np.sqrt(np.diag(sumErr))
     #Create fit
     sumFit = gaussianpdf(sumEdgCent, sumStats[0], sumStats[1], sumStats[2])
