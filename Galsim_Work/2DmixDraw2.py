@@ -6,7 +6,8 @@ import matplotlib.pyplot as pl
 
 #Irving Rodriguez
 #
-#This program studies the ellipticity of fitting a single Gaussian to a mixture of two Gaussians.
+#Draws a Gaussian mixture composed of 2 Gaussians, draws a single Gaussian fit, and draws the residual between the mixture and the fit.
+#Also plots the sum 
 
 
 #-------------------------------------------------------------------------
@@ -47,7 +48,7 @@ def drawMixture(domParams, contParams, skyMap, pixelScale=.2, stampSize=100,  sk
 		image = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
 		image = mix.drawImage(image=image, method='fft')
 		image.addNoise(galsim.PoissonNoise(rng=skyMap.get('rng'), sky_level=skyMap.get('skyLevel')*skyMap.get('expTime'))) #skylevel is counts/sec/pixel times 30 sec exposure time
-		gals = [domGal, contGal, mix]
+		gals = [domGal, contGal.original, mix]
 		return  gals, image
 	image = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
 	image = mix.drawImage(image=image, method='fft')
