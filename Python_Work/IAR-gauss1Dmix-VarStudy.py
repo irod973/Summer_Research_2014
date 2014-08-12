@@ -32,7 +32,8 @@ def main():
     #index1 = np.argmin(chi2, axis=0)
     #index2 = np.argmin(np.argmin(chi2, axis =0), axis=0)
     #Min = chi2[index1][index2]
-    #print mini;print Min
+    #print mini
+    #print Min
     
 def chiSq(data, values, stats, fig):
     #Make nxn grid
