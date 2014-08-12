@@ -5,61 +5,66 @@ import matplotlib.pyplot as pl
 
 #Irving Rodriguez
 #
-#This program studies the ellipticity of fitting a single Gaussian to a mixture of two Gaussians. It's tight
+#This program studies the ellipticity of fitting a single Gaussian to a mixture of two Gaussians.
+
 
 #-------------------------------------------------------------------------
 #Functions--------------------------------------------------------------------
 #-------------------------------------------------------------------------
 
 
-def gaussMix(domFlux, domSig, unFlux, unSig, ff, du, scale):
-	domGal = galsim.Gaussian(flux=domFlux, sigma=domSig)
-	unGal = galsim.Gaussian(flux=unFlux, sigma=unSig)
-	unGal = unGal.shift(dx=du, dy=0)
-	mix = ff * domGal + (1-ff) * unGal
-	image = galsim.ImageD(scale=scale)
-	image = mix.draw(image=image)
+def drawFit(params, pixelScale=.2, stampSize=100, psf=False):
+	flux = params['fitFlux'].value
+	hlr = params['fitHLR'].value
+	centX = params['fitCentX'].value
+	centY = params['fitCentY'].value
+	e1 = params['fite1'].value
+	e2 = params['fite2'].value
+
+	fit = galsim.Gaussian(flux=flux, half_light_radius=hlr)
+	fit = fit.shear(e1=e1, e2=e2)
+	fit = fit.shift(dx=centX, dy=centY)
+	if psf == True:
+		psf = galsim.Moffat(beta=3, fwhm=.6)
+		fit = galsim.Convolve([fit, psf])
+		image = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
+		image = fit.draw(image=image)
+		return image
+	image = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
+	image = fit.draw(image=image)
 	return image
 
-#Draw mixture using photon shoot method
-def gaussMixShoot(domParams, contParams, rng, pixelScale, stampSize):
+#Draw mixture using FFT
+def drawMixture(domParams, contParams, pixelScale=.2, stampSize=100, psf=False):
 	domGal = galsim.Gaussian(flux=domParams['flux'].value*domParams['frac'].value, half_light_radius=domParams['HLR'].value)
 	contGal = galsim.Gaussian(flux=contParams['flux'].value*contParams['frac'].value, half_light_radius=contParams['HLR'].value)
 	contGal = contGal.shift(dx=contParams['centX'].value, dy=contParams['centY'].value)
 	mix =  domGal + contGal
-	# psf = galsim.Moffat(beta=3, fwhm=.6)
-	# mix = galsim.Convolve([gauss, psf])
+	if psf==True:
+		psf = galsim.Moffat(beta=3, fwhm=.6)
+		mix = galsim.Convolve([gauss, psf])
+		image = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
+		image = mix.drawImage(image=image, method='fft')
+		gals = [domGal, contGal, mix]
+		return  gals, image
 	image = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
 	image = mix.drawImage(image=image, method='fft')
-	gals = [domGal, contGal, mix]
+	gals = [domGal, contGal.original, mix]
 	return  gals, image
 
 #Compute the least-squares residual between the parameter image and the mixture image 
-def leastSqResid(param, mixIm, pixelScale, stampSize):
-	flux = param['fitFlux'].value
-	hlr = param['fitHLR'].value
-	centX = param['fitCentX'].value
-	centY = param['fitCentY'].value
-	e1 = param['fite1'].value
-	e2 = param['fite2'].value
-	fit = galsim.Gaussian(flux=flux, half_light_radius=hlr)
-	fit = fit.shear(e1=e1, e2=e2)
-	fit = fit.shift(dx=centX, dy=centY)
-	# psf = galsim.Moffat(beta=3, fwhm=.6)
-	# fit = galsim.Convolve([fit, psf])
-	image = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
-	image = fit.draw(image=image)
-	return (image - mixIm).array.ravel()
+def leastSqResid(params, mixIm, pixelScale=.2, stampSize=100):
+	image = drawFit(params, pixelScale, stampSize)
+	return (image - mixIm).array.ravel()**2
 
-def fitProfile(result, scale):
-	fit = galsim.Gaussian(flux=result.params['fitFlux'].value, half_light_radius=result.params['fitHLR'].value)
-	fit = fit.shear(e1=result.params['fite1'].value, e2=result.params['fite2'].value)
-	fit = fit.shift(dx=result.params['fitCentX'].value, dy=result.params['fitCentY'].value)
-	fitIm = galsim.ImageD(100, 100, scale=scale)
-	fitIm = fit.draw(image=fitIm)
-	return fit, fitIm
+def mixtureMoments(gals, galParams):
+	fractions = [params['frac'].value for params in galParams]
+	zeroMoments = [params['flux'].value for params in galParams]
+	firstMoments = [(params['centX'].value, params['centY'].value) for params in galParams]
+	secondMoments = [[[gal.getSigma()**2, 0], [0, gal.getSigma()**2]] for gal in gals]
+	return fractions, zeroMoments, firstMoments, secondMoments
 
-def fitSep(domParams, contParams, rng, pixelScale, stampSize, shift):
+def varySeparation(domParams, contParams, shift, pixelScale=.2, stampSize=100):
 	params = lm.Parameters()
 	params.add('fitFlux', value=5.e6)
 	params.add('fitHLR', value=2)
@@ -75,32 +80,29 @@ def fitSep(domParams, contParams, rng, pixelScale, stampSize, shift):
 	ane1 = []
 	ane2 = []
 	for dx in shift:
-		# FWHM=.6
+
 		contParams['centX'].value = dx
-		gals, mixIm = gaussMixShoot(domParams, contParams, rng, pixelScale, stampSize)
+		gals, mixIm = drawMixture(domParams, contParams, pixelScale, stampSize)
 		#Find minimum of least-squares between mixture and fit
-		out = lm.minimize(leastSqResid, params, args=[mixIm, pixelScale, stampSize])
+		out = lm.minimize(leastSqResid, params, args=[mixIm])
 		
 		#Get ellipticity from fit parameters
 		e1.append(out.params['fite1'].value)
 		e2.append(out.params['fite2'].value)
-		#e1Err.append(np.sqrt(np.diag(out.covar))[2])	
-		#e2Err.append(np.sqrt(np.diag(out.covar))[3])
 
-		#Calculate moments of mixture components (write a function)
+		#Calculate moments of mixture components
+		galParams = [domParams, contParams]
+		gal = [gals[0], gals[1]]		
+		fractions, zeroMom, firstMom, secMom = mixtureMoments(gal, galParams)
 
-		fractions = [domParams['frac'].value, contParams['frac'].value]
-		galsZeroMom = [domParams['flux'].value, contParams['flux'].value]
-		galsFirstMom = [(domParams['centX'].value, domParams['centY'].value), (contParams['centX'].value, contParams['centY'].value)]
-		galsSecMom = [[[gals[0].getSigma()**2, 0], [0, gals[0].getSigma()**2]], [[gals[1].original.getSigma()**2, 0], [0, gals[1].original.getSigma()**2]]]
-		
 		#Get analytic ellipticities
-		ae1, ae2 = analyticMixShear(fractions, galsZeroMom, galsFirstMom, galsSecMom)
+		ae1, ae2 = analyticMixShear(fractions, zeroMom, firstMom, secMom)
 		ane1.append(ae1)
 		ane2.append(ae2)
+
 	return e1, e1Err, e2, e2Err, ane1, ane2
 
-def fitProp(domFlux, domHLR, unFlux, unHLR, f, dx, dy, rng, pixelScale):
+def varyFracFlux(domParams, contParams, fracRange, pixelScale=.2, stampSize=100):
 	params = lm.Parameters()
 	params.add('fitFlux', value=5.e5)
 	params.add('fitHLR', value=2)
@@ -109,29 +111,39 @@ def fitProp(domFlux, domHLR, unFlux, unHLR, f, dx, dy, rng, pixelScale):
 	params.add('fite1', value=0., min=-1, max=1)
 	params.add('fite2', value=0., min=-1, max=1)
 
+	dParams = domParams
+	cParams = contParams
+
 	e1p = []
 	e2p = []
 	e1Perr = []
 	e2Perr = []
 	annie = []
 	annie2 = []
-	for frac in f:
-		galsP, mixIm = gaussMixShoot(domFlux, domHLR, unFlux, unHLR, frac, dx, dy, rng, pixelScale)
-		out = lm.minimize(leastSqResid, params, args=[mixIm, pixelScale])
-		fit = galsim.Gaussian(flux=out.params['fitFlux'].value, half_light_radius=out.params['fitHLR'].value)
-		fit = fit.shear(e1=out.params['fite1'].value, e2=out.params['fite2'].value)
-		fit = fit.shift(dx=out.params['fitCentX'].value, dy=out.params['fitCentY'].value)
-		fitIm = galsim.ImageD(100, 100, scale=pixelScale)
-		fitIm = fit.draw(image=fitIm)
+
+	for frac in fracRange:
+		
+		dParams['frac'].value = frac
+		cParams['frac'].value = 1-frac
+		gals, mixIm = drawMixture(domParams, contParams, pixelScale, stampSize)
+
+		#Find minimum of least-squares between mixture and fit
+		out = lm.minimize(leastSqResid, params, args=[mixIm])
+
+		#Get ellipticity from fit parameters
 		e1p.append(out.params['fite1'].value)
 		e2p.append(out.params['fite2'].value)
-		e1Perr.append(np.sqrt(np.diag(out.covar))[2])
-		e2Perr.append(np.sqrt(np.diag(out.covar))[3])
+
+		#Calculate moments of mixture components
+		galParams = [domParams, contParams]
+		gal = [gals[0], gals[1]]		
+		fractions, zeroMom, firstMom, secMom = mixtureMoments(gal, galParams)
 
 		#Get analytic ellipticities
-		ann1, ann2= analyticMixShear(galsP, frac, dx)
-		annie.append(ann1)
-		annie2.append(ann2)
+		ae1p, ae2p = analyticMixShear(fractions, zeroMom, firstMom, secMom)
+		annie.append(ae1p)
+		annie2.append(ae2p)
+
 	return e1p, e1Perr, e2p, e2Perr, annie, annie2
 
 def fitSepS(domFlux, domHLR, unFlux, unHLR, ff, shift, rng, pixelScale):
@@ -149,7 +161,7 @@ def fitSepS(domFlux, domHLR, unFlux, unHLR, ff, shift, rng, pixelScale):
 	e2Serr = []
 
 	for du in shift:
-		gals, mixIm = gaussMixShoot(domFlux, domHLR, unFlux, unHLR, ff, du[0], du[1], rng, pixelScale)
+		gals, mixIm = drawMixture(domFlux, domHLR, unFlux, unHLR, ff, du[0], du[1], rng, pixelScale)
 		out = lm.minimize(leastSqResid, params, args=[mixIm, pixelScale])
 		fit = galsim.Gaussian(flux=out.params['fitFlux'].value, half_light_radius=out.params['fitHLR'].value)
 		fit = fit.shear(e1=out.params['fite1'].value, e2=out.params['fite2'].value)
@@ -185,22 +197,24 @@ def analyticMixShear(fluxFractions, fluxes, centroids, quads):
 	e1 = (Q[0][0] - Q[1][1])/(Q[0][0] + Q[1][1])
 	e2 = 2*Q[0][1]/(Q[0][0]+Q[1][1])
 	return e1, e2
+
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------
 
-#Parameters for Mix Plot
+#Parameters for Mixture
 domFlux = 2.e6
 domHLR = 1  #arcsec
 contFlux = 2.e6
 contHLR = domHLR
-pixelScale = .2 #arcsec/pixel
 domFrac = .5 #Fractional flux of dominant galaxy, so contFrac = 1-domFrac
+pixelScale = .2 #arcsec/pixel
+stampSize = 100 #pixels
+
 du = 10 * pixelScale #arcsec
 phi = 0 #angle between centroid of contam and real x-axis
 dx = du * np.cos(phi)
 dy = du * np.sin(phi)
-stampSize = 100 #pixels
 
 domParams = lm.Parameters()
 domParams.add('flux', value=domFlux)
@@ -216,27 +230,30 @@ contParams.add('centX', value=dx)
 contParams.add('centY', value=dy)
 contParams.add('frac', value=(1-domFrac))
 
-#Parameters for ellipticity studies
-numSteps = 50
-sep = 10 * pixelScale #arcsec
-rng = galsim.BaseDeviate(1)
 
 #Ellipticity studies
+#Parameters for ellipticity studies
+numSteps = 100
+sep = 10 * pixelScale #arcsec
 
-#Run from separation along x-axis, with fractional flux defined by ff
+#Vary separation along x-axis in real
 shift = np.linspace(-sep, sep, numSteps)
-e1, e1Err, e2, e2Err, ane1, ane2 = fitSep(domParams, contParams, rng, pixelScale, stampSize, shift)
+e1, e1Err, e2, e2Err, ane1, ane2 = varySeparation(domParams, contParams, shift)
 
-# #Run through proportion space, wth separation defined by du
-f = np.linspace(.5, .99, numSteps)
-#e1p, e1Perr, e2p, e2Perr, annie, annie2 = fitProp(domParams, contParams, rng, pixelScale, f)
+#Vary dominant flux
+contParams['centX'].value = dx
+fracRange = np.linspace(.5, .99, numSteps)
+e1p, e1Perr, e2p, e2Perr, annie, annie2 = varyFracFlux(domParams, contParams,fracRange)
 
 #Run from separation along pi/4 axis
 shif = [(elem * np.cos(np.pi/4), elem * np.sin(np.pi/4)) for elem in shift]
 # e1s, e1Serr, e2s, e2Serr = fitSepS(domParams, contParams, rng, pixelScale, shif)
 
+#Draw a certain mixture, its fit, and residuals
 #Create mixture, using drawShoot
-gals, mixIm = gaussMixShoot(domParams, contParams, rng, pixelScale, stampSize)
+domParams['frac'].value = domFrac
+contParams['frac'].value = 1-domFrac
+gals, mixIm = drawMixture(domParams, contParams)
 
 params = lm.Parameters()
 params.add('fitFlux', value=5.e5)
@@ -247,22 +264,15 @@ params.add('fite1', value=0., min=-1, max=1)
 params.add('fite2', value=0., min=-1, max=1)
 
 #Fit a single Gaussian
-out = lm.minimize(leastSqResid, params, args=[mixIm, pixelScale, stampSize])
-
-fit = galsim.Gaussian(flux=out.params['fitFlux'].value, half_light_radius=out.params['fitHLR'].value)
-fit = fit.shear(e1=out.params['fite1'].value, e2=out.params['fite2'].value)
-fit = fit.shift(dx=out.params['fitCentX'].value, dy=out.params['fitCentY'].value)
-# psf = galsim.Moffat(beta=3, fwhm=.6)
-# cfit = galsim.Convolve([fit, psf])
-fitIm = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
-fitIm = fit.draw(image=fitIm)
+out = lm.minimize(leastSqResid, params, args=[mixIm])
+fitIm = drawFit(params)
+lm.report_errors(params)
 
 #Plots
-
 fig1 = pl.figure()
 
 domStr = 'Dominant Galaxy: ' + str(gals[0].centroid()) + ', '+str(domFlux)+', '+str(domHLR)+', '+str(domFrac)+', 0, 0'
-contStr = 'Contaminant Galaxy: ' + str(gals[1].centroid()) + ', '+str(contFlux)+', '+str(contHLR)+', '+str((1-domFrac))+', 0, 0'
+contStr = 'Contaminant Galaxy: (' + str(contParams['centX'].value) + ', ' + str(contParams['centY'].value) + '), '+str(contFlux)+', '+str(contHLR)+', '+str((1-domFrac))+', 0, 0'
 titleStr = 'Parameters (centroid, flux, hlr, fraction of flux, e1, e2)\n'+domStr+ '\n'+contStr+'\nPixel Scale: '+ str(pixelScale)+' arcsec/pixel'
 fig1.suptitle(titleStr, fontsize=12)
 
@@ -285,10 +295,9 @@ ax13.set_title('Residual')
 pl.colorbar(c3, shrink=.5)
 
 
-
+#Plotting varying parameters
 fig2=pl.figure(2)
 
-# Plotting varying separation
 anFitDiff = [ei - ai for ei, ai in zip(e1, ane1)]
 ax21 = fig2.add_subplot(121)
 ax21.plot(shift, e1, label='Fit e1')
@@ -304,16 +313,16 @@ ax21.axvline(x=0, color='k')
 ax21.set_xlim(min(shift), max(shift))
 ax21.legend(prop={'size':11}, loc=9)
 
-#Plotting varying fractional flux
-# ax22 = fig2.add_subplot(122)
-# ax22.plot(f, e1p, label='Fit e1')
-# ax22.plot(f, e2p, label='Fit e2')
-# # ax5.plot(f, annie)
-# # ax5.plot(f, annie2)
-# ax22.set_xlabel('Dominant Galaxy Flux Fraction')
-# ax22.set_ylabel('e1')
-# ax22.set_title('Shear vs. Flux Fraction (Sep=2 arcsec=2 HLR)')
-# ax22.legend()
+#Vary fractional flux
+ax22 = fig2.add_subplot(122)
+ax22.plot(fracRange, e1p, label='Fit e1')
+ax22.plot(fracRange, e2p,label='Fit e2')
+ax22.plot(fracRange, annie, label='Analytic e1')
+ax22.plot(fracRange, annie2, label='Analytic e2')
+ax22.set_xlabel('Dominant Galaxy Flux Fraction')
+ax22.set_ylabel('e1')
+ax22.set_title('Shear vs. Flux Fraction (Sep='+ str(dx) + ' arcsec='+str(domHLR)+ ' HLR)')
+ax22.legend()
 
 #Plotting varying separation along the pi/4 axis
 # ax6 = fig2.add_subplot(236)
