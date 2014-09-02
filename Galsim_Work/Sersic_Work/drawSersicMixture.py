@@ -5,33 +5,37 @@ import matplotlib.pyplot as pl
 
 #Irving Rodriguez
 #
-#
+#Draws a mixture of two bulge+disk sersic galaxies, fits a single bulge+disk sersic, and draws the residual between the best fit and the mixture
 
 #-------------------------------------------------------------------------
 #Functions--------------------------------------------------------------------
 #-------------------------------------------------------------------------
 
-def drawFit(params):
-	flux = params['fitFlux'].value
-	hlr = params['fitHLR'].value
+def drawFit(params, pixelScale=.2, stampSize=50, psf=False):
+	diskFlux = params['fitDiskFlux'].value
+	diskHLR = params['fitDiskHLR'].value
 	centX = params['fitCentX'].value
 	centY = params['fitCentY'].value
 	e1 = params['fite1'].value
 	e2 = params['fite2'].value
-	bulgeN = params['bulgeNIndex'].value
 	diskN = params['diskNIndex'].value
+	#bulgeN = params['bulgeNIndex'].value
+	#bulgeFlux = params['fitBulgeFlux'].value
+	#bulgeHLR = params['fitBulgeHLR'].value
 
-	fitBulge = galsim.Sersic(n=bulgeN, flux=flux, half_light_radius=hlr)
-	fitDisk = galsim.Sersic(n=diskN, flux=flux, half_light_radius=hlr)
-	fit = fitBulge+fitDisk
+	fit = galsim.Sersic(n=diskN, flux=diskFlux, half_light_radius=diskHLR)
+	#fit += galsim.Sersic(n=bulgeN, flux=bulgeFlux, half_light_radius=bulgeHLR)
 	fit = fit.shear(e1=e1, e2=e2)
 	fit = fit.shift(dx=centX, dy=centY)
-	fitImage = galsim.ImageD(50, 50, scale=.2)
-	fitImage = fit.draw(image=fitImage)
+	if psf==True:
+		psf = galsim.Moffat(beta=3, fwhm=.6)
+		fit = galsim.Convolve([fit,psf])
+	fitImage = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
+	fitImage = fit.drawImage(image=fitImage, method='fft')
 	return fitImage
 
-def drawMixture(domParams, contParams):
-	#Unpack parameter objects
+def drawMixture(domParams, contParams, pixelScale=.2, stampSize=50, psf=False, sky=False):
+	#Unpack parameters
 	flux = domParams['flux'].value
 	hlr = domParams['HLR'].value
 	domBulgeN = domParams['bulgeNIndex'].value
@@ -44,44 +48,46 @@ def drawMixture(domParams, contParams):
 	contFrac = contParams['fluxFraction'].value
 
 	#Draw mixture
-	domGalBulge = galsim.Sersic(n=domBulgeN, half_light_radius=hlr, flux=flux)
-	domGalDisk = galsim.Sersic(n=domDiskN, half_light_radius=hlr, flux=flux)
-	domGal = domGalBulge+domGalDisk
+	domGal = galsim.Sersic(n=domDiskN, half_light_radius=hlr, flux=flux)
+	#domGal += galsim.Sersic(n=domBulgeN, half_light_radius=hlr, flux=flux)
 
-	contGalBulge = galsim.Sersic(n=contBulgeN, half_light_radius=hlr, flux=flux)
-	contGalDisk = galsim.Sersic(n=contDiskN, half_light_radius=hlr, flux=flux)
-	contGal = contGalBulge+contGalDisk
+	contGal = galsim.Sersic(n=contDiskN, half_light_radius=hlr, flux=flux)
+	#contGal += galsim.Sersic(n=contBulgeN, half_light_radius=hlr, flux=flux)
 	contGal = contGal.shift(dx=contCentX, dy=contCentY)
 
 	mix = domGal*domFrac + contGal*contFrac
-	mixImage = galsim.ImageD(50, 50,scale=.2)
+	if psf==True:
+		psf = galsim.Moffat(beta=3, fwhm=.6)
+		mix = galsim.Convolve([mix, psf])
+	mixImage = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
 	mixImage = mix.drawImage(image=mixImage, method='fft')
+	if sky==True:
+		mixImage.addNoise(galsim.PoissonNoise(rng=galsim.BaseDeviate(1), sky_level=26.83*6900))
 	return mixImage
 
 def residual(params, mixIm):
-	fitIm = drawFit(params)
-	return (mixIm - fitIm).array.ravel()**2
-
+	fitIm = drawFit(params, psf=True)
+	return (mixIm - fitIm).array.ravel()
 
 #-------------------------------------------------------------------------
 #Body----------------------------------------------------------------------
 #-------------------------------------------------------------------------
 
 #Mixture parameters
-DOMINANT_FLUX = 3.e5
+DOMINANT_FLUX = 8.e5
 DOMINANT_HALF_LIGHT_RADIUS = 1. #arcsec
 CONTAMINANT_FLUX = DOMINANT_FLUX
 CONTAMINANT_HALF_LIGHT_RADIUS = DOMINANT_HALF_LIGHT_RADIUS
-BULGE_N = 4
-DISK_N = 1
+BULGE_N = 4.
+DISK_N = 1.
 DOMINANT_FLUX_FRACTION = .5
 CONTAMINANT_FLUX_FRACTION = 1 - DOMINANT_FLUX_FRACTION
+
 PIXEL_SCALE = .2 #arcsec/pixel
-SEPARATION = 3 * PIXEL_SCALE # pixels*scale=arcsec
+SEPARATION = 7.5 * PIXEL_SCALE # pixels*scale=arcsec
 PHI = 0. #angle between x-axis and major axes
 dx = SEPARATION * np.cos(PHI)
 dy = SEPARATION * np.sin(PHI)
-
 
 #Dominant galaxy parameters
 domParams = lm.Parameters()
@@ -109,19 +115,37 @@ contParams.add('fluxFraction', value = CONTAMINANT_FLUX_FRACTION)
 
 #Fit Parameters, will be changed by .minimize unless vary=False
 params = lm.Parameters()
-params.add('fitFlux', value = 3.e5)
-params.add('fitHLR', value = 1.)
+params.add('fitDiskFlux', value = 1.e5)
+params.add('fitDiskHLR', value = 1.)
 params.add('fitCentX', value = 0)
 params.add('fitCentY', value = 0)
 params.add('fite1', value = 0, min=-1, max=1)
 params.add('fite2', value = 0, min=-1, max=1)
-params.add('bulgeNIndex', value = 4, min=.3, max=6.2, vary=True)
-params.add('diskNIndex', value = 1, min=.3, max=6.2, vary=True)
+params.add('diskNIndex', value = 1, vary=False)
+#params.add('bulgeNIndex', value = 4, vary=False)
+#params.add('fitBulgeHLR', value = 1.)
+#params.add('fitBulgeFlux', value = 1.e5)
 
 #Draw mixture
-mixIm = drawMixture(domParams, contParams)
+mixIm = drawMixture(domParams, contParams, psf=True, sky=True)
+#Print SNR of this Flux
+threshold = .5*np.sqrt(26.83*6900)
+mixNoSky = drawMixture(domParams, contParams, psf=True)
+mask = mixNoSky.array>=threshold
+weight = mixNoSky.array
+wsnr = (mixIm.array*weight*mask).sum() / np.sqrt((weight*weight*26.83*6900*mask).sum())
+print 'SNR (weighted) for this flux: ', wsnr
+
+fig=pl.figure()
+ax = fig.add_subplot(121)
+im = ax.imshow(mask)
+ax2 =fig.add_subplot(122)
+im2 = ax2.imshow(mixNoSky.array)
+pl.show()
+
 #Minimize residual of mixture and fit with params
 out = lm.minimize(residual, params, args=[mixIm])
+print 'The minimum least squares is:', out.chisqr
 lm.report_errors(params)
 
 #Draw best fit
@@ -131,7 +155,8 @@ fitIm = drawFit(params)
 fig = pl.figure()
 domStr = 'Dominant Galaxy: (' + str(domParams['centX'].value) + ', ' + str(domParams['centY'].value) + '), ' + str(DOMINANT_FLUX) + ', ' + str(DOMINANT_HALF_LIGHT_RADIUS) + ', ' + str(DOMINANT_FLUX_FRACTION) + ', 0, 0'
 contStr = 'Contaminant Galaxy: (' + str(dx) + ', ' + str(dy) + '), ' + str(CONTAMINANT_FLUX) + ', ' + str(CONTAMINANT_HALF_LIGHT_RADIUS) + ', ' + str(CONTAMINANT_FLUX_FRACTION) + ', 0, 0'
-titleStr = 'Parameters (centroid, flux, hlr, flux fraction, e1, e2)\n' + domStr + '\n' + contStr + '\nPixel Scale: ' + str(PIXEL_SCALE) + ' arcsec/pixel'
+fitStr = 'Fit: (' + str(np.around(params['fitCentX'].value, decimals=2)) + ', ' + str(np.around(params['fitCentY'].value, decimals=2)) + '), ' + str(np.around(params['fitDiskFlux'].value, decimals=2)) + ', '  + str(np.around(params['fitDiskHLR'].value, decimals=2)) + ', ' + str(np.around(params['fite1'].value, decimals=2)) + ', ' + str(np.around(params['fite2'].value, decimals=2))
+titleStr = 'Parameters (centroid, flux, hlr, flux fraction, e1, e2)\n' + domStr + '\n' + contStr + '\n' + fitStr + '\nPixel Scale: ' + str(PIXEL_SCALE) + ' arcsec/pixel'
 fig.suptitle(titleStr, fontsize=18)
 
 ax11 = fig.add_subplot(131)
