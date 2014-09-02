@@ -47,25 +47,25 @@ def drawMixture(domParams, contParams, skyMap, pixelScale=.2, stampSize=100,  sk
 		mixImage = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
 		mixImage = mix.drawImage(image=mixImage, method='fft')
 		if sky==True:
-			mixImage.addNoise(galsim.PoissonNoise(rng=skyMap.get('rng'), sky_level=skyMap.get('skyLevel')*skyMap.get('expTime'))) #skylevel is counts/sec/pixel times 30 sec exposure time
+			mixImage.addNoise(galsim.PoissonNoise(rng=skyMap.get('rng'), sky_level=skyMap.get('meanSky')*skyMap.get('expTime'))) #skylevel is counts/sec/pixel times 30 sec exposure time
 		gals = [domGal, contGal.original, mix]
 		return  gals, mixImage
 	mixImage = galsim.ImageD(stampSize, stampSize, scale=pixelScale)
 	mixImage = mix.drawImage(image=mixImage, method='fft')
 	if sky==True:
-		mixImage.addNoise(galsim.PoissonNoise(rng=skyMap.get('rng'), sky_level=skyMap.get('skyLevel')*skyMap.get('expTime'))) #skylevel is counts/sec/pixel multiplied by full 10-year LSST band exposure time
+		mixImage.addNoise(galsim.PoissonNoise(rng=skyMap.get('rng'), sky_level=skyMap.get('')*skyMap.get('expTime'))) #skylevel is counts/sec/pixel multiplied by full 10-year LSST band exposure time
 	gals = [domGal, contGal.original, mix]
 	return gals, mixImage
 
 #Compute the chi-squared residual between the parameter image and the mixture image, using errors from the average sky level over a full stack
 def residual(params, mixIm, skyMap, pixelScale=.2, stampSize=100):
 	fitIm = drawFit(params, pixelScale, stampSize)
-	return (mixIm - fitIm).array.ravel()**2/(skyMap.get('skyLevel')*skyMap.get('expTime') + fitIm.array.ravel())
+	return (mixIm - fitIm).array.ravel()**2/(skyMap.get('meanSky')*skyMap.get('expTime') + fitIm.array.ravel())
 
 #Sum of flux from pixels above half the average sky level
 def fluxAboveThreshold(image, skyMap):
 	fluxAboveThresh = 0
-	threshold = .5*(skyMap.get('skyLevel')*skyMap.get('expTime'))**.5
+	threshold = .5*(skyMap.get('meanSky')*skyMap.get('expTime'))**.5
 	for elem in image.array.ravel():
 		if elem >= threshold:
 			fluxAboveThresh += elem
@@ -77,7 +77,7 @@ def fluxAboveThreshold(image, skyMap):
 #-------------------------------------------------------------------------
 
 #Parameters for Mixture
-DOMINANT_FLUX = 1.e6
+DOMINANT_FLUX = 7.5e5
 DOMINANT_HALF_LIGHT_RADIUS = 1  #arcsec
 DOMINANT_FLUX_FRACTION = .5 #Fractional flux of dominant galaxy, so contFrac = 1-domFrac
 CONTAMINANT_FLUX = DOMINANT_FLUX
@@ -93,10 +93,10 @@ PSF = True
 SKY = True #booleans
 
 #Parameters for sky
-SKY_LEVEL = 26.83 #counts/sec/pixel, from red band (David Kirkby notes)
+MEAN_SKY_BACKGROUND = 26.83 #counts/sec/pixel, from red band (David Kirkby notes)
 EXPOSURE_TIME = 6900 #sec, from LSST
 rng = galsim.BaseDeviate(1)
-skyMap = {'skyLevel':SKY_LEVEL, 'expTime':EXPOSURE_TIME, 'rng':rng}
+skyMap = {'meanSky':MEAN_SKY_BACKGROUND, 'expTime':EXPOSURE_TIME, 'rng':rng}
 
 
 #Mixture Parameters
@@ -142,8 +142,12 @@ lm.report_errors(params)
 #Draw best fit
 fitIm = drawFit(params, psf=PSF)
 
+fig = pl.figure()
+ax11 = fig.add_subplot(111)
+ax11.imshow(mixIm.array, origin='lower')
+pl.show()
 
-#Plots
+###Plots
 fig = pl.figure()
 domStr = 'Dominant Galaxy: (' + str(domParams['centX'].value) + ', ' + str(domParams['centY'].value) + '), ' + str(DOMINANT_FLUX) + ', ' + str(DOMINANT_HALF_LIGHT_RADIUS) + ', ' + str(DOMINANT_FLUX_FRACTION) + ', 0, 0'
 contStr = 'Contaminant Galaxy: (' + str(dx) + ', ' + str(dy) + '), ' + str(CONTAMINANT_FLUX) + ', ' + str(CONTAMINANT_HALF_LIGHT_RADIUS) + ', ' + str(CONTAMINANT_FLUX_FRACTION) + ', 0, 0'
@@ -153,19 +157,19 @@ fig.suptitle(titleStr, fontsize=18)
 #Plotting the mixture
 ax11 = fig.add_subplot(131)
 c1 = ax11.imshow(mixIm.array, origin='lower')
-ax11.set_title('Mixture')
+ax11.set_title('Mixture', fontsize = 18)
 pl.colorbar(c1, shrink=.5)
 
 #Plotting the fit
 ax12 = fig.add_subplot(132)
 c2 = ax12.imshow(fitIm.array, origin='lower')
-ax12.set_title('Fit')
+ax12.set_title('Fit', fontsize=18)
 pl.colorbar(c2, shrink=.5)
 
 #Plotting the residual
 ax13 = fig.add_subplot(133)
 c3 = ax13.imshow((fitIm-mixIm).array, origin='lower')
-ax13.set_title('Residual')
+ax13.set_title('Residual', fontsize=18)
 pl.colorbar(c3, shrink=.5)
 
 #Get the percentage of flux above sky level
@@ -183,7 +187,18 @@ fig = pl.figure(2)
 ax21 = fig.add_subplot(111)
 ax21.plot(fluxRange, percentThresh, '.')
 ax21.axhline(y=.95, label='95%')
-ax21.set_title('Percent Flux Above Sky (pixel sum) vs. Total Mixture Flux')
-ax21.legend(loc=7, prop={'size':11})
+ax21.set_title('Percent Flux Above Sky (sum over flux of pixels) vs. Total Mixture Flux')
+ax21.legend(loc=7, prop={'size':12})
+
+threshold = .5*(skyMap.get('meanSky')*skyMap.get('expTime'))**.5
+mask = mixIm.array>=threshold
+weight = mixIm.array
+snr = (mixIm.array*mask).sum() / np.sqrt((skyMap.get('meanSky')*skyMap.get('expTime')*mask).sum())
+wsnr = (mixIm.array*weight*mask).sum() / np.sqrt((weight*weight*skyMap.get('meanSky')*skyMap.get('expTime')*mask).sum())
+print 'Weighted: ', wsnr
+
+fig = pl.figure()
+ax01 = fig.add_subplot(111)
+im01 = ax01.imshow(mask)
 
 pl.show()
