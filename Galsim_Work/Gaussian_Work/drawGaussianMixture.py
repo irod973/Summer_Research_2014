@@ -1,4 +1,3 @@
-
 import galsim
 import lmfit as lm
 import numpy as np
@@ -69,10 +68,26 @@ params.add('fitCentY', value=domParams['centY'].value)
 params.add('fite1', value=domParams['e1'].value, min=-1, max=1)
 params.add('fite2', value=domParams['e2'].value, min=-1, max=1)
 
+####################################Plot mixture
+
 #Create mixture
+gals, mixImNoSky = lib.drawMixture(domParams, contParams, skyMap, psf=PSF, sky=False)
 gals, mixIm = lib.drawMixture(domParams, contParams, skyMap, psf=PSF, sky=SKY)
 
-#Minimize
+#Calculate Signal to Noise Ratio
+threshold = .5*(skyMap.get('meanSky')*skyMap.get('expTime'))**.5
+mask = mixImNoSky.array>=threshold
+weight = mixImNoSky.array
+snr = (mixImNoSky.array*mask).sum() / np.sqrt((skyMap.get('meanSky')*skyMap.get('expTime')*mask).sum())
+wsnr = (mixImNoSky.array*weight*mask).sum() / np.sqrt((weight*weight*skyMap.get('meanSky')*skyMap.get('expTime')*mask).sum())
+print 'Weighted SNR: ', wsnr
+
+#Show mask of pixels above threshold
+fig = pl.figure()
+ax01 = fig.add_subplot(111)
+im01 = ax01.imshow(mask)
+
+#Minimize residual
 if PSF==True:
 	out = lm.minimize(lib.residualPSF, params, args=[mixIm, skyMap])
 else:
@@ -125,18 +140,5 @@ pl.colorbar(c3, shrink=.5)
 # ax21.axhline(y=.95, label='95%')
 # ax21.set_title('Percent Flux Above Sky (sum over flux of pixels) vs. Total Mixture Flux')
 # ax21.legend(loc=7, prop={'size':12})
-
-#Calculate Signal to Noise Ratio
-threshold = .5*(skyMap.get('meanSky')*skyMap.get('expTime'))**.5
-mask = mixIm.array>=threshold
-weight = mixIm.array
-snr = (mixIm.array*mask).sum() / np.sqrt((skyMap.get('meanSky')*skyMap.get('expTime')*mask).sum())
-wsnr = (mixIm.array*weight*mask).sum() / np.sqrt((weight*weight*skyMap.get('meanSky')*skyMap.get('expTime')*mask).sum())
-print 'Weighted SNR: ', wsnr
-
-#Show mask of pixels above threshold
-fig = pl.figure()
-ax01 = fig.add_subplot(111)
-im01 = ax01.imshow(mask)
 
 pl.show()
